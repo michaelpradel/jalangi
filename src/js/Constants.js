@@ -9,7 +9,14 @@ if (typeof J$ === 'undefined') {
 
     Constants.IN_MEMORY_TRACE = Constants.isBrowser && (window.__JALANGI_IN_MEMORY_TRACE__);
 
-    Constants.HAS_OWN_PROPERTY = Object.prototype.hasOwnProperty;
+    var APPLY = Constants.APPLY = Function.prototype.apply;
+    var CALL = Constants.CALL = Function.prototype.call;
+    APPLY.apply = APPLY;
+    APPLY.call = CALL;
+    CALL.apply = APPLY;
+    CALL.call = CALL;
+
+    var HAS_OWN_PROPERTY = Constants.HAS_OWN_PROPERTY = Object.prototype.hasOwnProperty;
     Constants.HAS_OWN_PROPERTY_CALL = Object.prototype.hasOwnProperty.call;
 
 
@@ -20,12 +27,12 @@ if (typeof J$ === 'undefined') {
     Constants.SPECIAL_PROP4 = "*" + PREFIX1 + "W*";
 
     Constants.MODE_RECORD = 1;
-    Constants.MODE_REPLAY = 2
+    Constants.MODE_REPLAY = 2;
     Constants.MODE_NO_RR_IGNORE_UNINSTRUMENTED = 3;
     Constants.MODE_NO_RR = 4;
     Constants.MODE_DIRECT = 5;
 
-    Constants.T_NULL = 0
+    Constants.T_NULL = 0;
     Constants.T_NUMBER = 1;
     Constants.T_BOOLEAN = 2;
     var T_STRING = Constants.T_STRING = 3;
@@ -39,6 +46,8 @@ if (typeof J$ === 'undefined') {
     Constants.F_IID = 2;
     Constants.F_SEQ = 3;
     Constants.F_FUNNAME = 4;
+
+    Constants.UNKNOWN = -1;
 
     Constants.N_LOG_FUNCTION_ENTER = 4;
     Constants.N_LOG_SCRIPT_ENTER = 6;
@@ -82,7 +91,7 @@ if (typeof J$ === 'undefined') {
     }
 
     var HOP = Constants.HOP = function (obj, prop) {
-        return (prop + "" === '__proto__') || Constants.HAS_OWN_PROPERTY_CALL.apply(Constants.HAS_OWN_PROPERTY, [obj, prop]);
+        return (prop + "" === '__proto__') || CALL.call(HAS_OWN_PROPERTY, obj, prop); //Constants.HAS_OWN_PROPERTY_CALL.apply(Constants.HAS_OWN_PROPERTY, [obj, prop]);
     }
 
     Constants.hasGetterSetter = function (obj, prop, isGetter) {

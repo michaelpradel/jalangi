@@ -35,7 +35,7 @@ if (typeof J$ === 'undefined') {
     J$ = {};
 }
 
-window = {String:String, Array:Array, Error:Error, String:String, Number:Number, Date:Date, Boolean:Boolean, RegExp:RegExp};
+window = {String:String, Array:Array, Error:Error, Number:Number, Date:Date, Boolean:Boolean, RegExp:RegExp};
 
 (function (sandbox) {
     var Constants = sandbox.Constants;
@@ -90,7 +90,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
         var isBrowserReplay = Globals.isBrowserReplay = Constants.isBrowser && Globals.mode === MODE_REPLAY;
         Globals.isInstrumentedCaller = false;
         Globals.isConstructorCall = false;
-
+        Globals.isMethodCall = false;
 
         if (Globals.mode === MODE_DIRECT) {
             /* JALANGI_ANALYSIS file must define all instrumentation functions such as U, B, C, C1, C2, W, R, G, P */
@@ -211,28 +211,16 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
                 var type = typeof val, str;
                 if (type !== 'object' && type !== 'function') {
                     str = loc + ":" + iid + ":" + type + ":" + val;
-                    if (isBrowser)
-                        loadAndBranchLogs.push(str);
-                    else
-                        console.log(str);
+                    loadAndBranchLogs.push(str);
                 } else if (val === null) {
                     str = loc + ":" + iid + ":" + type + ":" + val;
-                    if (isBrowser)
-                        loadAndBranchLogs.push(str);
-                    else
-                        console.log(str);
+                    loadAndBranchLogs.push(str);
                 } else if (HOP(val, SPECIAL_PROP) && HOP(val[SPECIAL_PROP], SPECIAL_PROP)) {
                     str = loc + ":" + iid + ":" + type + ":" + val[SPECIAL_PROP][SPECIAL_PROP];
-                    if (isBrowser)
-                        loadAndBranchLogs.push(str);
-                    else
-                        console.log(str);
+                    loadAndBranchLogs.push(str);
                 } else {
                     str = loc + ":" + iid + ":" + type + ":object";
-                    if (isBrowser)
-                        loadAndBranchLogs.push(str);
-                    else
-                        console.log(str);
+                    loadAndBranchLogs.push(str);
                 }
             }
 
@@ -341,13 +329,16 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
             }
 
 
-            function invokeFun(iid, base, f, args, isConstructor) {
-                var g, invoke, val, ic, tmp_rrEngine, tmpIsConstructorCall, tmpIsInstrumentedCaller, idx;
+            function invokeFun(iid, base, f, args, isConstructor, isMethod) {
+                var g, invoke, val, ic, tmp_rrEngine, tmpIsConstructorCall, tmpIsInstrumentedCaller, idx, tmpIsMethodCall;
 
                 var f_c = getConcrete(f);
 
                 tmpIsConstructorCall = Globals.isConstructorCall;
                 Globals.isConstructorCall = isConstructor;
+                tmpIsMethodCall = Globals.isMethodCall;
+                Globals.isMethodCall = isMethod;
+
 
                 if (sandbox.analysis && sandbox.analysis.invokeFunPre) {
                     tmp_rrEngine = rrEngine;
@@ -381,7 +372,8 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
                         if (isConstructor) {
                             val = callAsConstructor(g, args);
                         } else {
-                            val = g.apply(base, args);
+                            val = Function.prototype.apply.call(g, base, args);
+                            //val = g.apply(base, args);
                         }
                     } else {
                         if (rrEngine) {
@@ -393,6 +385,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
                     popSwitchKey();
                     Globals.isInstrumentedCaller = tmpIsInstrumentedCaller;
                     Globals.isConstructorCall = tmpIsConstructorCall;
+                    Globals.isMethodCall = tmpIsMethodCall;
                 }
 
                 if (!ic && arr[1]) {
@@ -520,7 +513,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
             function F(iid, f, isConstructor) {
                 return function () {
                     var base = this;
-                    return invokeFun(iid, base, f, arguments, isConstructor);
+                    return invokeFun(iid, base, f, arguments, isConstructor, false);
                 }
             }
 
@@ -528,7 +521,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
             function M(iid, base, offset, isConstructor) {
                 return function () {
                     var f = G(iid+2, base, offset);
-                    return invokeFun(iid, base, f, arguments, isConstructor);
+                    return invokeFun(iid, base, f, arguments, isConstructor, true);
                 };
             }
 
@@ -553,6 +546,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
                         clientAnalysisException(e);
                     }
                 }
+                printValueForTesting("Call", iid, val);
             }
 
             // Function exit
@@ -670,7 +664,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
             function T(iid, val, type, hasGetterSetter) {
                 if (sandbox.analysis && sandbox.analysis.literalPre) {
                     try {
-                        sandbox.analysis.literalPre(iid, val);
+                        sandbox.analysis.literalPre(iid, val, hasGetterSetter);
                     } catch (e) {
                         clientAnalysisException(e);
                     }
@@ -694,7 +688,7 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
                 // inform analysis, which may modify the literal
                 if (sandbox.analysis && sandbox.analysis.literal) {
                     try {
-                        val = sandbox.analysis.literal(iid, val);
+                        val = sandbox.analysis.literal(iid, val, hasGetterSetter);
                     } catch (e) {
                         clientAnalysisException(e);
                     }
@@ -890,6 +884,9 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
                         break;
                     case "instanceof":
                         result_c = left_c instanceof right_c;
+                        if (rrEngine) {
+                            result_c = rrEngine.RR_L(iid, result_c, N_LOG_RETURN);
+                        }
                         break;
                     case "in":
                         result_c = left_c in right_c;
@@ -1095,6 +1092,12 @@ window = {String:String, Array:Array, Error:Error, String:String, Number:Number,
             function endExecution() {
                 if (branchCoverageInfo)
                     branchCoverageInfo.storeBranchInfo();
+                if (Config.LOG_ALL_READS_AND_BRANCHES) {
+                    if (mode === MODE_REPLAY) {
+                        require('fs').writeFileSync("readAndBranchLogs.replay", JSON.stringify(Globals.loadAndBranchLogs, undefined, 4), "utf8");
+                    }
+                }
+
                 if (sandbox.analysis && sandbox.analysis.endExecution) {
                     try {
                         return sandbox.analysis.endExecution();

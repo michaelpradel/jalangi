@@ -172,6 +172,29 @@
         return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
     }
 
+    /**
+     * rather than just calling JSON.stringify() on the metadata,
+     * we write it out line-by-line to avoid having to construct the full
+     * string in memory (which can fail for large inputs)
+     * @param filename
+     * @param metadata
+     */
+    function writeMetadata(filename, metadata) {
+        var fs = require('fs');
+        var fd = fs.openSync(filename, 'w');
+        fs.writeSync(fd, "{\n");
+        Object.keys(metadata).forEach(function (iid, ind, array) {
+            var str = JSON.stringify(iid) + ":";
+            str += JSON.stringify(metadata[iid],undefined,2);
+            if (ind < array.length-1) {
+                str += ",\n";
+            }
+            fs.writeSync(fd,str);
+        });
+        fs.writeSync(fd,"}\n");
+        fs.closeSync(fd);
+    }
+
 
     function saveCode(code, metadata, isAppend, noInstrEval) {
         var fs = require('fs');
@@ -184,7 +207,7 @@
 
         }
         if (metadata) {
-            fs.writeFileSync(instCodeFileName + ".ast.json", JSON.stringify(metadata, undefined, 2), "utf8");
+            writeMetadata(instCodeFileName + ".ast.json", metadata);
         }
     }
 
@@ -279,7 +302,7 @@
      * @param {string} outputDir an optional output directory for the sourcemap file
      */
 
-    function writeIIDMapFile(outputDir, initIIDs, isAppend) {
+    function writeIIDMapFile(outputDir, initIIDs, isAppend, topLevelExprs) {
         var traceWfh, fs = require('fs'), path = require('path');
         var smapFile = path.join(outputDir, SMAP_FILE_NAME);
         if (initIIDs) {
@@ -293,7 +316,7 @@
             fh = fs.openSync(instCodeFileName, 'w');
         }
 
-        writeLineToIIDMap(fs, traceWfh, fh, "(function (sandbox) {\n if (!sandbox.iids) {sandbox.iids = []; sandbox.orig2Inst = {};}\n");
+        writeLineToIIDMap(fs, traceWfh, fh, "(function (sandbox) {\n if (!sandbox.iids) {sandbox.iids = []; sandbox.orig2Inst = {}; sandbox.topLevelExprs = []; }\n");
         writeLineToIIDMap(fs, traceWfh, fh, "var iids = sandbox.iids; var orig2Inst = sandbox.orig2Inst;\n");
         writeLineToIIDMap(fs, traceWfh, fh, "var fn = \""+curFileName+"\";\n");
         // write all the data
@@ -304,6 +327,9 @@
         Object.keys(orig2Inst).forEach(function (filename) {
             writeLineToIIDMap(fs, traceWfh, fh, "orig2Inst[\"" + filename + "\"] = \"" + orig2Inst[filename] + "\";\n");
         });
+        if (topLevelExprs) {
+            writeLineToIIDMap(fs, traceWfh, fh, "sandbox.topLevelExprs = sandbox.topLevelExprs.concat(" + JSON.stringify(topLevelExprs) + ");\n");
+        }
         writeLineToIIDMap(fs, traceWfh, fh, "}(typeof " + astUtil.JALANGI_VAR + " === 'undefined'? " + astUtil.JALANGI_VAR + " = {}:" + astUtil.JALANGI_VAR + "));\n");
         fs.closeSync(traceWfh);
         if (isAppend) {
@@ -1062,8 +1088,9 @@
                 'arguments':node.arguments
             };
             transferLoc(ret, node);
-            var ret1 = wrapLiteral(node, ret, N_LOG_OBJECT_LIT);
-            return ret1;
+            return ret;
+//            var ret1 = wrapLiteral(node, ret, N_LOG_OBJECT_LIT);
+//            return ret1;
         },
         "CallExpression":function (node) {
             var isEval = node.callee.type === 'Identifier' && node.callee.name === "eval";
@@ -1513,7 +1540,7 @@
     function transformString(code, visitorsPost, visitorsPre) {
 //        console.time("parse")
 //        var newAst = esprima.parse(code, {loc:true, range:true});
-        var newAst = acorn.parse(code, {locations:true, ranges:true});
+        var newAst = acorn.parse(code, { locations:true });
 //        console.timeEnd("parse")
 //        console.time("transform")
         addScopes(newAst);
@@ -1566,7 +1593,7 @@
      *                 filename_jalangi_.js.  We need this filename because it gets written
      *                 into the trace produced by the instrumented code during record
      'metadata': Should metadata about IIDs be provided (currently serialized ASTs and top-level expressions)?
-     * @return {{code:string, iidMetadata: object}} an object whose 'code' property is the instrumented code string,
+     * @return {{code:string, iidMetadata?: object, topLevelExprs?: object}} an object whose 'code' property is the instrumented code string,
      * and whose 'serializedAST' property has a JSON representation of the serialized AST, of the serialize
      * parameter was true
      *
@@ -1593,12 +1620,12 @@
 
                 var ret = newCode + "\n" + noInstr + "\n";
                 if (metadata) {
-                    return { code:ret, iidMetadata:getMetadata(newAst) };
+                    return { code:ret, iidMetadata:getMetadata(newAst), topLevelExprs: topLevelExprs };
                 } else {
-                    return {code:ret};
+                    return {code:ret, topLevelExprs: topLevelExprs };
                 }
             } else {
-                return {code:code};
+                return {code:code };
             }
         } else {
             return {code:code};
@@ -1613,14 +1640,17 @@
         }
         curFileName = args.filename;
         instCodeFileName = args.instFileName;
-        orig2Inst[curFileName] = instCodeFileName;
+        if (curFileName && instCodeFileName) {
+            orig2Inst[curFileName] = instCodeFileName;
+        }
 
         loadInitialIID(args.dirIIDFile, args.initIID);
 
-        var codeAndMData = instrumentCode(code, {wrapProgram:true, isEval:false, metadata:args.metadata});
+        var wrapProgram = HOP(args, 'wrapProgram') ? args.wrapProgram : true;
+        var codeAndMData = instrumentCode(code, {wrapProgram:wrapProgram, isEval:false, metadata:args.metadata});
 
         storeInitialIID(args.dirIIDFile);
-        writeIIDMapFile(args.dirIIDFile, args.initIID, args.inlineIID);
+        writeIIDMapFile(args.dirIIDFile, args.initIID, args.inlineIID, codeAndMData.topLevelExprs);
         return codeAndMData;
     }
 
@@ -1652,7 +1682,7 @@
         args.instFileName = args.out?args.out:makeInstCodeFileName(fname);
 
         var codeAndMData = instrumentAux(getCode(fname), args);
-        saveCode(codeAndMData.code, codeAndMData.metadata, args.inlineIID, args.noInstrEval);
+        saveCode(codeAndMData.code, codeAndMData.iidMetadata, args.inlineIID, args.noInstrEval);
     }
 
 

@@ -59,6 +59,12 @@ function instrument(options, cb) {
 
     var excludePattern = options.exclude;
 
+    var onlyIncludeList = null;
+
+    if (options.only_include) {
+        onlyIncludeList = options.only_include.split(path.delimiter);
+    }
+
     var dumpSerializedASTs = options.serialize;
 
     var jalangiRoot = getJalangiRoot();
@@ -96,7 +102,7 @@ function instrument(options, cb) {
 
 
     function createOrigScriptFilename(name) {
-        return name.replace(".js", "_orig_.js");
+        return name.replace(new RegExp(".js$"), "_orig_.js");
     }
 
     function rewriteInlineScript(src, metadata) {
@@ -135,9 +141,10 @@ function instrument(options, cb) {
 
     var Transform = stream.Transform;
 
-    function HTMLRewriteStream(options) {
+    function HTMLRewriteStream(options, filename) {
         Transform.call(this, options);
         this.data = "";
+        this.filename = filename;
     }
 
     util.inherits(HTMLRewriteStream, Transform);
@@ -162,6 +169,7 @@ function instrument(options, cb) {
                 result += "<script src=\"" + fileName + "\"></script>";
             };
             instUtil.headerSources.forEach(addScript);
+            result += "<script src=\"jalangi_sourcemap.js\"></script>";
             if (analysis) {
                 analysis.forEach(addScript);
             }
@@ -173,52 +181,56 @@ function instrument(options, cb) {
         } else {
             // just inject our header code
             var headIndex = this.data.indexOf("<head>");
-            assert.ok(headIndex !== -1, "couldn't find head element");
-            var headerLibs;
-            if (copyRuntime) {
-                headerLibs = getContainedRuntimeScriptTags();
+            if (headIndex === -1) {
+                console.error("WARNING: could not find <head> element in HTML file " + this.filename);
+                this.push(this.data);
             } else {
-                var tmp3 = "";
-                if (analysis) {
-                    analysis.forEach(function (src) {
-                        src = path.resolve(src);
-                        tmp3 += "<script src=\"" + src + "\"></script>";
-                    });
+                var headerLibs;
+                if (copyRuntime) {
+                    headerLibs = getContainedRuntimeScriptTags();
+                } else {
+                    var tmp3 = "";
+                    if (analysis) {
+                        analysis.forEach(function (src) {
+                            src = path.resolve(src);
+                            tmp3 += "<script src=\"" + src + "\"></script>";
+                        });
+                    }
+
+                    headerLibs = instUtil.getHeaderCodeAsScriptTags(jalangiRoot);
+                    headerLibs += "<script src=\"jalangi_sourcemap.js\"></script>";
+                    headerLibs = headerLibs + tmp3;
+                }
+                if (selenium) {
+                    headerLibs = "<script>" + seleniumCode + "</script>" + headerLibs;
+                }
+                if (inMemoryTrace) {
+                    headerLibs = "<script>" + inMemoryTraceCode + "</script>" + headerLibs;
+                }
+                if (inbrowser) {
+                    headerLibs = "<script>" + analysisCode + "</script>" + headerLibs;
+                }
+                if (smemory) {
+                    headerLibs = "<script>" + smemoryOption + "</script>" + headerLibs;
                 }
 
-                headerLibs = instUtil.getHeaderCodeAsScriptTags(jalangiRoot);
-                headerLibs = headerLibs + tmp3;
+                if (extraAppScripts.length > 0) {
+                    // we need to inject script tags for the extra app scripts,
+                    // which have been copied into the app directory
+                    extraAppScripts.forEach(function (script) {
+                        var scriptSrc = path.join(EXTRA_SCRIPTS_DIR, path.basename(script));
+                        headerLibs += "<script src=\"" + scriptSrc + "\"></script>";
+                    });
+                }
+                var newHTML = this.data.slice(0, headIndex + 6) + headerLibs + this.data.slice(headIndex + 6);
+                this.push(newHTML);
             }
-            if (selenium) {
-                headerLibs = "<script>" + seleniumCode + "</script>" + headerLibs;
-            }
-            if (inMemoryTrace) {
-                headerLibs = "<script>" + inMemoryTraceCode + "</script>" + headerLibs;
-            }
-            if (inbrowser) {
-                headerLibs = "<script>" + analysisCode + "</script>" + headerLibs;
-            }
-            if (smemory) {
-                headerLibs = "<script>" + smemoryOption + "</script>" + headerLibs;
-            }
-            headerLibs += "<script src=\"jalangi_sourcemap.js\"></script>";
-
-            if (extraAppScripts.length > 0) {
-                // we need to inject script tags for the extra app scripts,
-                // which have been copied into the app directory
-                extraAppScripts.forEach(function (script) {
-                    var scriptSrc = path.join(EXTRA_SCRIPTS_DIR, path.basename(script));
-                    headerLibs += "<script src=\"" + scriptSrc + "\"></script>";
-                });
-            }
-            var newHTML = this.data.slice(0, headIndex + 6) + headerLibs + this.data.slice(headIndex + 6);
-            this.push(newHTML);
         }
         cb();
     };
 
-    function rewriteHtml(readStream, writeStream) {
-        readStream.pipe(new HTMLRewriteStream()).pipe(writeStream);
+    function rewriteHtml(readStream, writeStream, filename) {
+        readStream.pipe(new HTMLRewriteStream(null, filename)).pipe(writeStream);
     }
 
     function InstrumentJSStream(options, origScriptName, instScriptName) {
@@ -283,19 +295,45 @@ function instrument(options, cb) {
         readStream.pipe(fs.createWriteStream(path.join(copyDir, origScriptCopyName)));
     }
 
+    /**
+     * determine if a file is in the include list
+     * @param fileName
+     * @returns {boolean}
+     */
+    function includedFile(fileName) {
+        var relativePath = fileName.substring(appDir.length+1);
+        var result = false;
+        for (var i = 0; i < onlyIncludeList.length; i++) {
+            var prefix = onlyIncludeList[i];
+            if (relativePath.indexOf(prefix) === 0) {
+                result = true;
+                break;
+            }
+        }
+        return result;
+    }
+
     function transform(readStream, writeStream, file) {
         var extension = path.extname(file.name);
         if (extension === '.html') {
-            if (options.no_html) {
+            if (options.no_html || (onlyIncludeList && !includedFile(file.name))) {
                 readStream.pipe(writeStream);
             } else {
-                rewriteHtml(readStream, writeStream);
+                rewriteHtml(readStream, writeStream, file.name);
             }
         } else if (extension === '.js') {
-            if ((!excludePattern || file.name.indexOf(excludePattern) === -1)) {
+            // we instrument a JS file iff:
+            // (1) it's an extra app script, or
+            // (2) an include list is specified and the file name is included, or
+            // (3) an include list is not specified, and the file path does not
+            //     contain the excludePattern
+            var instrumentJSFile = file.name.indexOf(EXTRA_SCRIPTS_DIR) !== -1 ||
+                (onlyIncludeList && includedFile(file.name)) ||
+                (!onlyIncludeList && (!excludePattern || file.name.indexOf(excludePattern) === -1));
+            if (instrumentJSFile) {
                 instrumentJS(readStream, writeStream, file.name);
             } else {
-                console.log("excluding " + file.name);
+//                console.log("excluding " + file.name);
                 readStream.pipe(writeStream);
             }
         } else {
@@ -398,7 +436,8 @@ function instrument(options, cb) {
 if (require.main === module) { // main script
     var parser = new ArgumentParser({ addHelp:true, description:"Utility to apply Jalangi instrumentation to files or a folder."});
     parser.addArgument(['-s', '--serialize'], { help:"dump serialized ASTs along with code", action:'storeTrue' });
-    parser.addArgument(['-x', '--exclude'], { help:"do not instrument any scripts whose filename contains this substring" });
+    parser.addArgument(['-x', '--exclude'], { help:"do not instrument any scripts whose file path contains this substring" });
+    parser.addArgument(['--only_include'], { help: "list of path prefixes specifying which sub-directories should be instrumented, separated by path.delimiter"});
     // TODO add back this option once we've fixed the relevant HTML parsing code
     parser.addArgument(['-i', '--instrumentInline'], { help:"instrument inline scripts", action:'storeTrue'});
     parser.addArgument(['--analysis'], { help:"Analysis script for 'inbrowser'/'record' mode.  Analysis must not use ConcolicValue", action:"append" });

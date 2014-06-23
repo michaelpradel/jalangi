@@ -111,36 +111,40 @@ if (typeof J$ === 'undefined') {
                 if (val === null) {
                     value = 0;
                 } else {
-                    if (!HOP(val, SPECIAL_PROP)) {
-                        if (Object && Object.defineProperty && typeof Object.defineProperty === 'function') {
-                            try {
-                                Object.defineProperty(val, SPECIAL_PROP, {
-                                    enumerable:false,
-                                    writable:true
-                                });
-                            } catch (e) {
-                                if (Constants.isBrowser && window.__JALANGI_PHANTOM__) {
-                                    // known issue with older WebKit in PhantomJS
-                                    // ignoring seems to not cause anything too harmful
-                                } else {
-                                    throw e;
+                    try {
+                        if (!HOP(val, SPECIAL_PROP)) {
+                            createdMockObject = true;
+                            if (Object && Object.defineProperty && typeof Object.defineProperty === 'function') {
+                                try {
+                                    Object.defineProperty(val, SPECIAL_PROP, {
+                                        enumerable:false,
+                                        writable:true
+                                    });
+                                } catch (e) {
+                                    if (Constants.isBrowser && window.__JALANGI_PHANTOM__) {
+                                        // known issue with older WebKit in PhantomJS
+                                        // ignoring seems to not cause anything too harmful
+                                    } else {
+                                        throw e;
+                                    }
                                 }
                             }
-                        }
-                        if (typen === T_ARRAY) {
-                            val[SPECIAL_PROP] = [];//Object.create(null);
-                        } else {
-                            val[SPECIAL_PROP] = {};//Object.create(null);
-                        }
-                        val[SPECIAL_PROP][SPECIAL_PROP] = objectId;
-                        createdMockObject = true;
+                            if (typen === T_ARRAY) {
+                                val[SPECIAL_PROP] = [];//Object.create(null);
+                            } else {
+                                val[SPECIAL_PROP] = {};//Object.create(null);
+                            }
+                            val[SPECIAL_PROP][SPECIAL_PROP] = objectId;
 //                            console.log("oid:"+objectId);
-                        objectId = objectId + 2;
+                            objectId = objectId + 2;
+                        }
+                    } catch (e2) {
+
                     }
-                    if (HOP(val, SPECIAL_PROP) && typeof val[SPECIAL_PROP][SPECIAL_PROP] === 'number') {
+                    if (HOP(val, SPECIAL_PROP) && val[SPECIAL_PROP] && typeof val[SPECIAL_PROP][SPECIAL_PROP] === 'number') {
                         value = val[SPECIAL_PROP][SPECIAL_PROP];
                     } else {
-                        value = undefined;
+                        value = Constants.UNKNOWN;
                     }
                 }
             }
@@ -186,7 +190,7 @@ if (typeof J$ === 'undefined') {
             var id;
             var oldVal = val;
             val = getConcrete(oldVal);
-            if (!HOP(val, SPECIAL_PROP)) {
+            if (!HOP(val, SPECIAL_PROP) || !val[SPECIAL_PROP]) {
                 if (Object && Object.defineProperty && typeof Object.defineProperty === 'function') {
                     Object.defineProperty(val, SPECIAL_PROP, {
                         enumerable:false,
@@ -247,7 +251,7 @@ if (typeof J$ === 'undefined') {
                 var type = getNumericType(replayValue);
 
                 if (obj === undefined) {
-                    if (type === recordedType && !HOP(replayValue, SPECIAL_PROP)) {
+                    if (type === recordedType && !(HOP(replayValue, SPECIAL_PROP) && replayValue[SPECIAL_PROP])) {
                         obj = replayValue;
                     } else {
                         if (recordedType === T_OBJECT) {
@@ -273,7 +277,7 @@ if (typeof J$ === 'undefined') {
                     obj[SPECIAL_PROP][SPECIAL_PROP] = recordedValue;
                     createdMockObject = true;
                     var tmp2 = ((obj === replayValue) ? oldReplayValue : obj);
-                    if (traceReader.hasFutureReference(recordedValue))
+                    if (recordedValue !== Constants.UNKNOWN && traceReader.hasFutureReference(recordedValue))
                         objectMap[recordedValue] = tmp2;
                     obj[SPECIAL_PROP][SPECIAL_PROP4] = tmp2;
                 } else if (traceReader.canDeleteReference(recordedArray)) {
@@ -334,7 +338,7 @@ if (typeof J$ === 'undefined') {
 
         this.RR_getConcolicValue = function (obj) {
             var val = getConcrete(obj);
-            if (val === obj && val !== undefined && val !== null && HOP(val, SPECIAL_PROP)) {
+            if (val === obj && val !== undefined && val !== null && HOP(val, SPECIAL_PROP) && val[SPECIAL_PROP]) {
                 var val = val[SPECIAL_PROP][SPECIAL_PROP4];
                 if (val !== undefined) {
                     return val;
@@ -349,7 +353,7 @@ if (typeof J$ === 'undefined') {
         this.RR_updateRecordedObject = function (obj) {
             if (Globals.mode === MODE_REPLAY) {
                 var val = getConcrete(obj);
-                if (val !== obj && val !== undefined && val !== null && HOP(val, SPECIAL_PROP)) {
+                if (val !== obj && val !== undefined && val !== null && HOP(val, SPECIAL_PROP) && val[SPECIAL_PROP]) {
                     var id = val[SPECIAL_PROP][SPECIAL_PROP];
                     if (traceReader.hasFutureReference(id))
                         objectMap[id] = obj;
@@ -374,7 +378,7 @@ if (typeof J$ === 'undefined') {
 
             obj = getConcrete(obj);
             proto = obj.__proto__;
-            var oid = this.RR_Load(iid, (proto && HOP(proto, SPECIAL_PROP)) ? proto[SPECIAL_PROP][SPECIAL_PROP] : undefined, undefined);
+            var oid = this.RR_Load(iid, (proto && HOP(proto, SPECIAL_PROP) && proto[SPECIAL_PROP]) ? proto[SPECIAL_PROP][SPECIAL_PROP] : undefined, undefined);
             if (oid) {
                 if (Globals.mode === MODE_RECORD) {
                     obj[SPECIAL_PROP].__proto__ = proto[SPECIAL_PROP];
@@ -398,7 +402,7 @@ if (typeof J$ === 'undefined') {
                     type === 'boolean') {
                     seqNo++;
                     return val;
-                } else if (!HOP(base_c, SPECIAL_PROP)) {
+                } else if (!HOP(base_c, SPECIAL_PROP) || !base_c[SPECIAL_PROP]) {
                     return this.RR_L(iid, val, N_LOG_GETFIELD);
                 } else if ((tmp = base_c[SPECIAL_PROP][mod_offset]) === val ||
                     // TODO what is going on with this condition? This is isNaN check
@@ -439,7 +443,7 @@ if (typeof J$ === 'undefined') {
         this.RR_P = function (iid, base, offset, val) {
             if (Globals.mode === MODE_RECORD) {
                 var base_c = getConcrete(base);
-                if (HOP(base_c, SPECIAL_PROP)) {
+                if (HOP(base_c, SPECIAL_PROP) && base_c[SPECIAL_PROP]) {
                     base_c[SPECIAL_PROP][getConcrete(offset)] = val;
                 }
             }
@@ -475,7 +479,7 @@ if (typeof J$ === 'undefined') {
             if (Globals.mode === MODE_RECORD) {
                 if (trackedVal === val ||
                     (val !== val && trackedVal !== trackedVal) ||
-                    (name === "this" && Globals.isInstrumentedCaller && !Globals.isConstructorCall)) {
+                    (name === "this" && Globals.isInstrumentedCaller && !Globals.isConstructorCall && Globals.isMethodCall)) {
                     seqNo++;
                     ret = val;
                 } else {
@@ -485,7 +489,7 @@ if (typeof J$ === 'undefined') {
             } else if (Globals.mode === MODE_REPLAY) {
                 if (traceReader.getCurrent() === undefined) {
                     traceReader.next();
-                    if (name === "this" && Globals.isInstrumentedCaller && !Globals.isConstructorCall) {
+                    if (name === "this" && Globals.isInstrumentedCaller && !Globals.isConstructorCall && Globals.isMethodCall) {
                         ret = val;
                     } else {
                         ret = trackedVal;
@@ -580,6 +584,12 @@ if (typeof J$ === 'undefined') {
                 frame = frameStack[frameStack.length - 1];
                 if (Globals.mode === MODE_RECORD && frameStack.length <= 1) {
                     traceWriter.flush();
+                    if (Config.LOG_ALL_READS_AND_BRANCHES) {
+                        if (Globals.mode === MODE_RECORD && !Constants.isBrowser) {
+                            require('fs').writeFileSync("readAndBranchLogs.record", JSON.stringify(Globals.loadAndBranchLogs, undefined, 4), "utf8");
+                        }
+                    }
+
                 }
             }
             if (Constants.isBrowserReplay) {
@@ -681,7 +691,8 @@ if (typeof J$ === 'undefined') {
                         f = getConcrete(syncValue(ret, undefined, 0));
                         ret = traceReader.getNext();
                         var dis = syncValue(ret, undefined, 0);
-                        f.call(dis);
+                        Function.prototype.call.call(f, dis);
+//                        f.call(dis);
                     } else if (ret[F_FUNNAME] === N_LOG_SCRIPT_ENTER) {
                         var path = getConcrete(syncValue(ret, undefined, 0));
                         if (Constants.isBrowserReplay) {
@@ -712,6 +723,7 @@ if (typeof J$ === 'undefined') {
         }
 
 
+        var tmp_LOG_ALL_READS_AND_BRANCHES = false;
         if (Globals.mode === MODE_REPLAY) {
             traceReader = new TraceReader();
             this.addRecord = traceReader.addRecord;
@@ -728,9 +740,11 @@ if (typeof J$ === 'undefined') {
                     if (e.altKey && e.shiftKey && e.keyCode === 84) {
                         traceWriter.stopTracing();
                         traceWriter.onflush(function () {
-                            if (Config.LOG_ALL_READS_AND_BRANCHES) console.save(Globals.loadAndBranchLogs, "readAndBranchLogs.record");
+                            if (tmp_LOG_ALL_READS_AND_BRANCHES) console.save(Globals.loadAndBranchLogs, "readAndBranchLogs.record");
                             alert("trace flush complete");
                         });
+                        tmp_LOG_ALL_READS_AND_BRANCHES = Config.LOG_ALL_READS_AND_BRANCHES;
+                        Config.LOG_ALL_READS_AND_BRANCHES = false;
                     }
                 });
             }

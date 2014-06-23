@@ -21,9 +21,11 @@ A direct analysis (aka inbrowser analysis) can be written using the following te
 //
 //        this.declare = function (iid, name, val, isArgument) {};
 //
-//        this.literalPre = function (iid, val) {};
+//        this.literalPre = function (iid, val, hasGetterSetter) {};
 //
-//        this.literal = function (iid, val) {};
+//        this.literal = function (iid, val, hasGetterSetter) {
+//            return val;
+//        };
 //
 //        this.invokeFunPre = function (iid, f, base, args, isConstructor) {};
 //
@@ -161,9 +163,11 @@ These kind of analyses supports shadow values (denoted by objects of type Concol
 //
 //        this.declare = function (iid, name, val, isArgument) {};
 //
-//        this.literalPre = function (iid, val) {};
+//        this.literalPre = function (iid, val, hasGetterSetter) {};
 //
-//        this.literal = function (iid, val) {};
+//        this.literal = function (iid, val, hasGetterSetter) {
+//            return val;
+//        };
 //
 //        this.invokeFunPre = function (iid, f, base, args, isConstructor) {};
 //

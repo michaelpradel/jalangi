@@ -1,3 +1,4 @@
+// Author: Koushik Sen
 
 (function (sandbox) {
     function UndefinedOffset() {
@@ -22,7 +23,9 @@
 //
 //        this.literalPre = function (iid, val) {};
 //
-//        this.literal = function (iid, val) {};
+//        this.literal = function (iid, val) {
+//            return val;
+//        };
 //
 //        this.invokeFunPre = function (iid, f, base, args, isConstructor) {};
 //
@@ -122,5 +125,5 @@
     }
 
 //    sandbox.analysis = new UndefinedOffset();
-    sandbox.analysis.addAnalysis(new UndefinedOffset());
+    sandbox.analysis = new UndefinedOffset();
 }(J$));

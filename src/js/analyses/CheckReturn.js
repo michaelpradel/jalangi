@@ -14,7 +14,9 @@
 //
 //        this.literalPre = function (iid, val) {};
 //
-//        this.literal = function (iid, val) {};
+        this.literal = function (iid, val) {
+            return val;
+        };
 //
 //        this.invokeFunPre = function (iid, f, base, args, isConstructor) {};
 //
@@ -93,5 +95,5 @@
     }
 
 //    sandbox.analysis = new UndefinedOffset();
-    sandbox.analysis.addAnalysis(new CheckReturn());
+    sandbox.analysis = new CheckReturn();
 }(J$));
