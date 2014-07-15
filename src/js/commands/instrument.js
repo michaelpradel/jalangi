@@ -78,6 +78,10 @@ function instrument(options, cb) {
 
     var inbrowser = options.inbrowser;
 
+    var analysis2 = options.analysis2;
+
+    instUtil.setHeaders(analysis2);
+
     var smemory = options.smemory;
 
     var copyRuntime = options.copy_runtime;
@@ -88,9 +92,11 @@ function instrument(options, cb) {
     // directory to which app is being copied
     var copyDir;
 
-    // analysis to run in browser (?)
-    var analysis = options.analysis;
+    // analyses to run in browser
+    var analyses = options.analysis;
 
+    // initialization parameters for analysis
+    var initParams = options.initParam;
     /**
      * extra scripts to inject into the application and instrument
      * @type {Array.<String>}
@@ -170,12 +176,24 @@ function instrument(options, cb) {
             };
             instUtil.headerSources.forEach(addScript);
             result += "<script src=\"jalangi_sourcemap.js\"></script>";
-            if (analysis) {
-                analysis.forEach(addScript);
+            if (analyses) {
+                analyses.forEach(addScript);
             }
             return result;
         }
 
+        function genInitParamsCode() {
+            var initParamsObj = {};
+            initParams.forEach(function (keyVal) {
+                var split = keyVal.split(':');
+                if (split.length !== 2) {
+                    throw new Error("invalid initParam " + keyVal);
+                }
+                initParamsObj[split[0]] = split[1];
+            });
+
+            return "<script>if (J$.analysis.init) { J$.analysis.init(" + JSON.stringify(initParamsObj) + "); }</script>";
+        }
         if (instrumentInline) {
             this.push(proxy.rewriteHTML(this.data, "http://foo.com", rewriteInlineScript, instUtil.getHeaderCode(jalangiRoot)));
         } else {
@@ -190,8 +208,8 @@ function instrument(options, cb) {
                     headerLibs = getContainedRuntimeScriptTags();
                 } else {
                     var tmp3 = "";
-                    if (analysis) {
-                        analysis.forEach(function (src) {
+                    if (analyses) {
+                        analyses.forEach(function (src) {
                             src = path.resolve(src);
                             tmp3 += "<script src=\"" + src + "\"></script>";
                         });
@@ -214,6 +232,10 @@ function instrument(options, cb) {
                     headerLibs = "<script>" + smemoryOption + "</script>" + headerLibs;
                 }
 
+                if (analyses && initParams) {
+                    // add initialization code at the end
+                    headerLibs += genInitParamsCode();
+                }
                 if (extraAppScripts.length > 0) {
                     // we need to inject script tags for the extra app scripts,
                     // which have been copied into the app directory
@@ -247,7 +269,9 @@ function instrument(options, cb) {
     var firstEntry = true;
 
     InstrumentJSStream.prototype._flush = function (cb) {
-        console.log("instrumenting " + this.origScriptName);
+        if (require.main === module) {
+            console.log("instrumenting " + this.origScriptName);
+        }
         var options = {
             wrapProgram:true,
             filename:this.origScriptName,
@@ -356,8 +380,8 @@ function instrument(options, cb) {
             fs.writeFileSync(outputFile, String(fs.readFileSync(srcFile)));
         };
         instUtil.headerSources.forEach(copyFile);
-        if (analysis) {
-            analysis.forEach(function (f) {
+        if (analyses) {
+            analyses.forEach(function (f) {
                 var outputFile = path.join(outputDir, path.basename(f));
                 fs.writeFileSync(outputFile, String(fs.readFileSync(f)));
             });
@@ -436,11 +460,13 @@ function instrument(options, cb) {
 if (require.main === module) { // main script
     var parser = new ArgumentParser({ addHelp:true, description:"Utility to apply Jalangi instrumentation to files or a folder."});
     parser.addArgument(['-s', '--serialize'], { help:"dump serialized ASTs along with code", action:'storeTrue' });
+    parser.addArgument(['-a2', '--analysis2'], { help:"use analysis2", action:'storeTrue' });
     parser.addArgument(['-x', '--exclude'], { help:"do not instrument any scripts whose file path contains this substring" });
     parser.addArgument(['--only_include'], { help: "list of path prefixes specifying which sub-directories should be instrumented, separated by path.delimiter"});
     // TODO add back this option once we've fixed the relevant HTML parsing code
     parser.addArgument(['-i', '--instrumentInline'], { help:"instrument inline scripts", action:'storeTrue'});
     parser.addArgument(['--analysis'], { help:"Analysis script for 'inbrowser'/'record' mode.  Analysis must not use ConcolicValue", action:"append" });
+    parser.addArgument(['--initParam'], { help: "initialization parameter for analysis, specified as key:value", action:'append'});
     parser.addArgument(['-d', '--direct_in_output'], { help:"Store instrumented app directly in output directory (by default, creates a sub-directory of output directory)", action:'storeTrue' });
     parser.addArgument(['--selenium'], { help:"Insert code so scripts can detect they are running under Selenium.  Also keeps Jalangi trace in memory", action:'storeTrue' });
     parser.addArgument(['--in_memory_trace'], { help:"Insert code to tell analysis to keep Jalangi trace in memory instead of writing to WebSocket", action:'storeTrue' });

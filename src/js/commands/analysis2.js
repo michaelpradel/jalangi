@@ -24,9 +24,8 @@
 var argparse = require('argparse');
 var parser = new argparse.ArgumentParser({
     addHelp: true,
-    description: "Command-line utility to perform Jalangi's direct analysis"
+    description: "Command-line utility to perform Jalangi's analysis2"
 });
-parser.addArgument(['--smemory'], { help: "Use shadow memory", action: 'storeTrue'});
 parser.addArgument(['--analysis'], { help: "absolute path to analysis file to run", action:'append'});
 parser.addArgument(['--initParam'], { help: "initialization parameter for analysis, specified as key:value", action:'append'});
 parser.addArgument(['script_and_args'], {
@@ -37,31 +36,26 @@ var args = parser.parseArgs();
 
 function runAnalysis(initParam) {
     if (args.script_and_args.length === 0) {
-        console.error("must provide script to execute");
+        console.error("must provide script to record");
         process.exit(1);
     }
     // we shift here so we can use the rest of the array later when
     // hacking process.argv; see below
     var script = args.script_and_args.shift();
 
-    global.JALANGI_MODE="inbrowser";
-    global.USE_SMEMORY=args.smemory;
-
     var path = require('path');
-    var Headers = require('./../Headers');
+    var Headers = require('./../Headers2');
     Headers.headerSources.forEach(function(src){
         require('./../../../'+src);
     });
 
+    J$.initParams = initParam;
     if (args.analysis) {
         args.analysis.forEach(function (src) {
             require(path.resolve(src));
         });
     }
 
-    if (J$.analysis && J$.analysis.init) {
-        J$.analysis.init(initParam ? initParam : {});
-    }
 
     // hack process.argv for the child script
     script = path.resolve(script);
@@ -77,7 +71,7 @@ function runAnalysis(initParam) {
             process.send({result:result});
         }
     }
-    process.exit();
+//    process.exit();
 }
 
 if (process.send) {
