@@ -5,8 +5,8 @@ if (typeof J$ === 'undefined') {
     J$ = {};
 }
 
-(function (sandbox) {
-    sandbox.SMemory = function () {
+(function(sandbox) {
+    sandbox.SMemory = function() {
         var Constants = sandbox.Constants;
 
         var SPECIAL_PROP = Constants.SPECIAL_PROP + "M";
@@ -31,10 +31,14 @@ if (typeof J$ === 'undefined') {
             var type = typeof val;
             if ((type === 'object' || type === 'function') && val !== null && !HOP(val, SPECIAL_PROP)) {
                 if (Object && Object.defineProperty && typeof Object.defineProperty === 'function') {
-                    Object.defineProperty(val, SPECIAL_PROP, {
-                        enumerable:false,
-                        writable:true
-                    });
+                    try {
+                        Object.defineProperty(val, SPECIAL_PROP, {
+                            enumerable:false,
+                            writable:true
+                        });
+                    } catch (e) {
+                        // cannot attach special field in some DOM Objects.  So ignore them.
+                    }
                 }
                 try {
                     val[SPECIAL_PROP] = Object.create(null);
@@ -47,7 +51,7 @@ if (typeof J$ === 'undefined') {
 
         }
 
-        this.getShadowObject = function (val) {
+        this.getShadowObject = function(val) {
             var value;
             createShadowObject(val);
             var type = typeof val;
@@ -59,7 +63,7 @@ if (typeof J$ === 'undefined') {
             return value;
         };
 
-        this.getFrame = function (name) {
+        this.getFrame = function(name) {
             var tmp = frame;
             while (tmp && !HOP(tmp, name)) {
                 tmp = tmp[SPECIAL_PROP3];
@@ -71,7 +75,7 @@ if (typeof J$ === 'undefined') {
             }
         };
 
-        this.getParentFrame = function (otherFrame) {
+        this.getParentFrame = function(otherFrame) {
             if (otherFrame) {
                 return otherFrame[SPECIAL_PROP3];
             } else {
@@ -79,19 +83,19 @@ if (typeof J$ === 'undefined') {
             }
         };
 
-        this.getCurrentFrame = function () {
+        this.getCurrentFrame = function() {
             return frame;
         };
 
-        this.getClosureFrame = function (fun) {
+        this.getClosureFrame = function(fun) {
             return fun[SPECIAL_PROP3];
         };
 
-        this.getShadowObjectID = function (obj) {
+        this.getShadowObjectID = function(obj) {
             return obj[SPECIAL_PROP];
         };
 
-        this.defineFunction = function (val, type) {
+        this.defineFunction = function(val, type) {
             if (type === N_LOG_FUNCTION_LIT) {
                 if (Object && Object.defineProperty && typeof Object.defineProperty === 'function') {
                     Object.defineProperty(val, SPECIAL_PROP3, {
@@ -103,21 +107,21 @@ if (typeof J$ === 'undefined') {
             }
         };
 
-        this.evalBegin = function () {
+        this.evalBegin = function() {
             evalFrames.push(frame);
             frame = frameStack[0];
         };
 
-        this.evalEnd = function () {
+        this.evalEnd = function() {
             frame = evalFrames.pop();
         };
 
 
-        this.initialize = function (name) {
+        this.initialize = function(name) {
             frame[name] = undefined;
         };
 
-        this.functionEnter = function (val) {
+        this.functionEnter = function(val) {
             frameStack.push(frame = Object.create(null));
             if (Object && Object.defineProperty && typeof Object.defineProperty === 'function') {
                 Object.defineProperty(frame, SPECIAL_PROP3, {
@@ -128,14 +132,14 @@ if (typeof J$ === 'undefined') {
             frame[SPECIAL_PROP3] = val[SPECIAL_PROP3];
         };
 
-        this.functionReturn = function () {
+        this.functionReturn = function() {
             frameStack.pop();
             frame = frameStack[frameStack.length - 1];
         };
 
-        this.scriptEnter = function () {
+        this.scriptEnter = function() {
             scriptCount++;
-            if (scriptCount>1) {
+            if (scriptCount > 1) {
                 frameStack.push(frame = Object.create(null));
                 //frame[SPECIAL_PROP] = frameId;
                 //frameId = frameId + 2;
@@ -143,8 +147,8 @@ if (typeof J$ === 'undefined') {
             }
         };
 
-        this.scriptReturn = function () {
-            if (scriptCount>1) {
+        this.scriptReturn = function() {
+            if (scriptCount > 1) {
                 frameStack.pop();
                 frame = frameStack[frameStack.length - 1];
             }
